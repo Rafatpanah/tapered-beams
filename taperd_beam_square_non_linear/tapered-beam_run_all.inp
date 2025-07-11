@@ -1,0 +1,46 @@
+
+/clear
+/delete,cases,csv
+
+
+dapplied=0.01
+Nbeams=50
+
+case_num=0
+
+num_E_cases=2
+*del,E_cases,,nopr
+*dim,E_cases,array,num_E_cases
+E_cases(1)=15000000
+E_cases(2)=30000000
+
+num_S_cases=5
+*del,S_cases,,nopr
+*dim,S_cases,array,num_S_cases
+S_cases(1)=20000
+S_cases(2)=30000
+S_cases(3)=40000
+S_cases(4)=50000
+S_cases(5)=60000
+
+num_K_cases=4
+*del,K_cases,,nopr
+*dim,K_cases,array,num_K_cases
+K_cases(1)=150000
+K_cases(2)=200000
+K_cases(3)=250000
+K_cases(4)=300000
+
+*do,E_case,1,num_E_cases
+	*do,S_case,1,num_S_cases
+		*do,K_case,1,num_K_cases
+			case_num=case_num+1
+			E=E_cases(E_case)
+			K_target=K_cases(K_case)
+			s_allowable=S_cases(S_case)
+			parsav,all,params,save
+			/input,tapered_beam,inp
+		*enddo
+	*enddo
+*enddo
+

@@ -1,0 +1,477 @@
+
+/clear
+parres,new,params,save
+
+*afun,rad
+PI=acos(-1)
+*afun,deg
+
+/prep7
+angle=45
+nu=0.3
+G=(E/(2*(1+nu)))
+
+P=(K_target*dapplied)/Nbeams
+
+!********** solve for the beam parameters (h=0) **********!
+r=0.5	! guess
+*do,i,1,500
+	f=((dapplied*G**(5/4)*(5-8*r)**(1/4)*(-5+8*r))/P)-(12*E**(1/4)*(-1+r)*(-1+4*r)**(1/4)*(s_allowable/(P+2*P*r))**(1/2))
+	df=(10*dapplied*(G**(5/4))*(5-8*r)**(1 / 4))/P-(36*s_allowable*(E**(1/4))*(-1+2*r+2*r*r))/((s_allowable*P*(1+2*r)**3)**(1/2)*(-1+4*r**(3/4)))
+	
+	/com,i:%i% | f/df:%f/df%
+	*if,abs(f/df),le,1e-6,then
+		*exit
+	*else
+		r=r-f/df
+	*endif
+*enddo
+/com,r=%r% after %i% iterations
+
+L1=((1/3)*(((((P/s_allowable)**(4/3))*((1+2*r)**4)*((E-4*E*r)**2))/((G**2)*((5-8*r)**2)*(r**(8/3))))**(3 / 8)))**1
+L2=L1+h
+Tmin=2*2**(1/2)*r*((((L1**2)*(P**2)*((1+2*r)**6))/((s_allowable**2)*(r**4)))**(1/6))/((3**(2/3))*(1+2*r))
+Tmax=2**(1/2)*((((L1**2)*(P**2)*((1+2*r)**6))/((s_allowable**2)*(r**4)))**(1/6))/(3**(2/3))
+
+beam_angle=atan(((Tmax-Tmin)/2)/L1)
+
+!********** solve for min mathmatical L_min **********!
+
+eps=10**(-1*6)
+L_min=2.0 ! guess
+*do,i,1,500
+
+	p1=500*dapplied**3*E**3*P-(6000*E**3*P**2*L_min*s_allowable**2)/G**3
+	p2=9*L_min**5*s_allowable**4
+	p3=900*dapplied*E**2*P**(5/3)*L_min**2*s_allowable**(4/3)
+	p4=(p3*(s_allowable/P)**(2/3))/G
+	pVal=p1-p2-p4
+
+	p1=500*dapplied**3*E**3*P-(6000*E**3*P**2*L_min*s_allowable**2)/G**3
+	p2=9*L_min**5*s_allowable**4
+	p3=900*dapplied*E**2*P**(5/3)*L_min**2*s_allowable**(4/3)
+	p4=(p3*(s_allowable/P)**(2/3))/G
+	pVal1=p1-p2-p4
+
+	L_min=L_min+eps
+	p1=500*dapplied**3*E**3*P-(6000*E**3*P**2*L_min*s_allowable**2)/G**3
+	p2=9*L_min**5*s_allowable**4
+	p3=900*dapplied*E**2*P**(5/3)*L_min**2*s_allowable**(4/3)
+	p4=(p3*(s_allowable/P)**(2/3))/G
+	pVal2=p1-p2-p4
+	dpVal=(pVal2-pVal1)/eps
+	
+	/com,i:%i% | delta:%pVal/dpVal%
+	*if,abs(pVal/dpVal),le,1e-6,then
+		*exit
+	*else
+		L_min=L_min-pVal/dpVal
+	*endif
+*enddo
+/com,L_min=%L_min% after %i% iterations
+
+
+!********** solve for the beam parameters (h!=0) **********!
+
+*if,h,gt,0,then
+	!---Newton-RaphsonSolver---
+	nr_converged=0
+	rVal=r
+	L1Val=L1
+	iterations=500
+	eps=1e-6
+	tolerance=0.000001
+
+	*do,i,1,iterations,1
+		
+		*use,py_f1_f2.mac,rVal,L1Val,dapplied,E,G,P,h,s_allowable
+		f1_current=F1_OUT
+		f2_current=F2_OUT
+
+		!df1_dr
+		*use,py_f1_f2.mac,rVal+eps,L1Val,dapplied,E,G,P,h,s_allowable
+		df1_dr=(F1_OUT-f1_current)/eps
+
+		!df1_dL1
+		*use,py_f1_f2.mac,rVal,L1Val+eps,dapplied,E,G,P,h,s_allowable
+		df1_dL1=(F1_OUT-f1_current)/eps
+
+		!df2_dr
+		*use,py_f1_f2.mac,rVal+eps,L1Val,dapplied,E,G,P,h,s_allowable
+		df2_dr=(F2_OUT-f2_current)/eps
+
+		!df2_dL1
+		*use,py_f1_f2.mac,rVal,L1Val+eps,dapplied,E,G,P,h,s_allowable
+		df2_dL1=(F2_OUT-f2_current)/eps
+
+		!CalculateDeterminantofJacobian
+		detJ=(df1_dr*df2_dL1)-(df1_dL1*df2_dr)
+		
+		!Checkforsmalldeterminant
+		*if,ABS(detJ),LT,1e-12,THEN
+			/com,Jacobiandeterminanttoosmall.Stoppingiteration.
+			*EXIT
+		*endif
+
+		!CalculateDeltas
+		delta_r=-(df2_dL1*f1_current-df1_dL1*f2_current)/detJ
+		delta_L1=-(-df2_dr*f1_current+df1_dr*f2_current)/detJ
+
+		/com,NR: iteration %i% | r:%rVal% | L1:%L1Val%
+		!UpdaterValandL1Val
+		rVal=rVal+delta_r
+		L1Val=L1Val+delta_L1
+		*if,L1Val,le,0,then
+			*exit
+		*endif
+
+		/com,i:%i% | dr: %delta_r% | dL1: %delta_L1%
+		!Checkforconvergence
+		*if,ABS(delta_r),LT,tolerance,AND,ABS(delta_L1),LT,tolerance,THEN
+			/com,Newton-Raphson converged in %i% iterations.
+			nr_converged=1
+			*EXIT
+		*endif
+	*enddo
+	!Checkforconvergence
+	*if,ABS(delta_r),gt,tolerance,AND,ABS(delta_L1),gt,tolerance,THEN
+		/com,Newton-Raphson DID NOT converged in %i% iterations.
+		*EXIT
+	*endif
+
+	r=rVal
+	L1=L1Val
+	L2=L1+h
+	L=L1+L2
+	Tmin=(2**(1/6)*(3*h+4*L1*r)*(P/((h+2*L1*r)**2*s_allowable))**(1/3))/(3**(2/3))
+	Tmax=(2**(1/6)*(3*h+2*L1+4*L1*r)*(P/((h+2*L1*r)**2*s_allowable))**(1/3))/(3**(2/3))
+
+	beam_angle=atan(((Tmax-Tmin)/2)/L1)
+
+*cfopen,cases_nr_info,csv,,append
+*vwrite,case_num,E,G,dapplied,s_allowable,K_target,r,Tmax,Tmin,L1,h,L2,%L1+L2%,nr_converged,i,delta_r,delta_L1
+%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G
+*cfclos
+
+	*if,r,lt,(1/4),or,r,gt,(5/8),then
+		/com,r <= 0 | failed to converge
+		
+*cfopen,cases,csv,,append
+*vwrite,case_num
+%G
+*cfclos
+		/eof
+	*endif
+
+	*if,L1,le,0,then
+		/com,l1 <= 0 | failed to converge
+		! /eof
+	*endif
+
+*endif
+
+
+*del,T_x,,nopr
+*if,h,eq,0,then
+	*dim,T_x,table,3
+	T_x(0,0)=0
+	T_x(0,1)=0
+	
+	T_x(1,0)=0
+	T_x(2,0)=L1
+	T_x(3,0)=L1+L2
+	
+	T_x(1,1)=Tmax
+	T_x(2,1)=Tmin
+	T_x(3,1)=Tmax
+*else
+	*dim,T_x,table,4
+	T_x(0,0)=0
+	T_x(0,1)=0
+	
+	T_x(1,0)=0
+	T_x(2,0)=L1
+	T_x(3,0)=L1+h
+	T_x(4,0)=L1+L2
+	
+	T_x(1,1)=Tmax
+	T_x(2,1)=Tmin
+	T_x(3,1)=Tmin
+	T_x(4,1)=Tmax
+*endif
+
+
+!********** calculate stress predictions **********!
+
+stress_pred_n_steps=100
+*del,stress_pred,,nopr
+*dim,stress_pred,array,stress_pred_n_steps,2
+*do,x_index,1,stress_pred_n_steps
+	x=(x_index-1)*((L1+L2)/(stress_pred_n_steps-1))
+	stress_pred(x_index,1)=x
+	
+	T_curr=T_x(x)
+	*if,T_curr,eq,0,then
+		I_x=(0.001)**4/12
+	*else
+		I_x=T_curr**4/12
+	*endif
+	M_x=-P*(x-((L1+L2)/2))
+	
+	*if,x,le,L1,then
+		stress_pred(x_index,2)=(M_x*2**0.5*T_curr/2)/I_x
+	*elseif,x,le,L1+h/2,then
+		stress_pred(x_index,2)=(M_x*2**0.5*T_curr/2)/I_x
+	*elseif,x,le,L2,then
+		stress_pred(x_index,2)=(M_x*2**0.5*T_curr/2)/I_x
+	*else
+		stress_pred(x_index,2)=(M_x*2**0.5*T_curr/2)/I_x
+	*endif
+*enddo
+*vscfun,stress_pred_max,max,stress_pred(1,2)
+
+!********** build the model **********!
+
+mp,ex,1,E
+mp,nuxy,1,nu
+
+et,1,186
+
+csys,0
+wpcsys,-1
+k,,-Tmax/2,Tmax/2
+k,,Tmax/2,Tmax/2
+k,,Tmax/2,-Tmax/2
+k,,-Tmax/2,-Tmax/2
+
+k,,-Tmin/2,Tmin/2,L1
+k,,Tmin/2,Tmin/2,L1
+k,,Tmin/2,-Tmin/2,L1
+k,,-Tmin/2,-Tmin/2,L1
+
+v,1,2,3,4,5,6,7,8
+
+*if,h,gt,0,then
+	k,,-Tmin/2,Tmin/2,L1+h/2
+	k,,Tmin/2,Tmin/2,L1+h/2
+	k,,Tmin/2,-Tmin/2,L1+h/2
+	k,,-Tmin/2,-Tmin/2,L1+h/2
+	
+	v,5,6,7,8,9,10,11,12
+*endif
+
+smrtsize,off
+lsel,s,loc,z,0
+lsel,a,loc,z,L1
+lesize,all,,,6,-4
+
+alls
+*if,h,gt,0,then
+	wpoffs,,,L1+h/2
+*else
+	wpoffs,,,L1
+*endif
+csys,4
+vsymm,z,all
+
+type,1
+real,1
+mat,1
+
+vglue,all
+
+csys,0
+alls
+lsel,u,loc,z,0
+lsel,u,loc,z,L1
+lsel,u,loc,z,L1+h/2
+lsel,u,loc,z,L2
+lsel,u,loc,z,L1+2
+! lesize,all,,,40,,,,,0
+lesize,all,0.02,,,,,,,0
+
+vsweep,all
+
+/view,,1,1,1
+/auto
+eplot
+
+!********** apply boundary conditions **********!
+
+et,2,21
+r,2,1e-20,1e-20,1e-20,1e-20,1e-20,1e-20
+type,2
+real,2
+csys,0
+MN_beam_start=100000
+MN_beam_end=MN_beam_start+1
+n,MN_beam_start,0,0,0
+n,MN_beam_end,0,0,L1+L2
+e,MN_beam_start
+e,MN_beam_end
+
+nsel,s,loc,z,0
+nsel,a,node,,MN_beam_start
+cerig,MN_beam_start,all,all
+
+nsel,s,loc,z,L1+L2
+cerig,MN_beam_end,all,all
+
+alls
+d,MN_beam_start,all,0
+d,MN_beam_end,UX,dapplied*sin(angle)
+d,MN_beam_end,UY,dapplied*cos(angle)
+d,MN_beam_end,ROTX,0
+d,MN_beam_end,ROTY,0
+d,MN_beam_end,ROTZ,0
+
+
+alls
+vsum
+*get,total_volume,volu,,volu
+
+!********** solve **********!
+
+/solu
+alls
+solve
+
+!********** post process **********!
+
+/post1
+
+/PLOPTS,INFO,2  
+/PLOPTS,LEG1,1  
+/PLOPTS,LEG2,0  
+/PLOPTS,LEG3,1  
+/PLOPTS,FRAME,1 
+/PLOPTS,TITLE,1 
+/PLOPTS,MINM,1  
+/PLOPTS,FILE,0  
+/PLOPTS,SPNO,0  
+/PLOPTS,LOGO,1  
+/PLOPTS,WINS,1  
+/PLOPTS,WP,0
+/PLOPTS,DATE,0  
+/TRIAD,ORIG 
+
+set,last
+
+nsel,s,loc,z,0
+nsel,a,loc,z,L1+L2
+esln
+nsle
+esln
+nsle
+esln
+cm,BC_E,elem
+alls
+cmsel,u,BC_E
+
+/cont,1,8
+/dscale,1,20
+plnsol,u,sum
+
+plnsol,s,1
+*get,max_s1,plnsol,,max
+
+!********** calculate the stiffness **********!
+
+nsel,s,loc,z,L1+L2
+esln
+fsum
+*get,fx,fsum,,item,fx
+*get,fy,fsum,,item,fy
+Freaction=(fx**2+fy**2)**0.5
+Stiffness=(Freaction/dapplied)*Nbeams
+
+!********** get the stress along the beam **********!
+
+alls
+*if,h,eq,0,then
+	path,all_beam,3,20,stress_pred_n_steps/3
+	ppath,1,node(Tmax/2,Tmax/2,L1+l2)
+	ppath,2,node(Tmin/2,Tmin/2,L1)
+	ppath,3,node(Tmax/2,Tmax/2,0)
+*else
+	path,all_beam,4,20,stress_pred_n_steps/4
+	ppath,1,node(Tmax/2,Tmax/2,L1+L2)
+	ppath,2,node(Tmin/2,Tmin/2,L2)
+	ppath,3,node(Tmin/2,Tmin/2,L1)
+	ppath,4,node(Tmax/2,Tmax/2,0)
+*endif
+
+*del,path_data_all_beam,,nopr
+pdef,s1,s,1,avg
+pdef,sz,s,z,avg
+! prpath,s1
+plpath,sz
+paget,path_data_all_beam,table
+
+*if,h,eq,0,then
+	path,beam_L1,2,20,stress_pred_n_steps
+	ppath,1,node(Tmax/2,Tmax/2,L1+l2)
+	ppath,2,node(Tmin/2,Tmin/2,L1)
+*else
+	path,beam_L1,3,20,stress_pred_n_steps/2
+	ppath,1,node(Tmax/2,Tmax/2,L1+L2)
+	ppath,2,node(Tmin/2,Tmin/2,L2)
+	ppath,3,node(Tmin/2,Tmin/2,L1+(h/2))
+*endif
+
+*del,path_data_L1,,nopr
+pdef,s1,s,1,avg
+pdef,sz,s,z,avg
+! prpath,s1
+plpath,sz
+pcalc,intg,S_intg,sz,s
+
+paget,path_data_L1,table
+! average stress from 0 to L1
+*vscfun,S_intg,max,path_data_L1(1,7)
+S_intg=S_intg/(L1+(h/2))
+! S_intg=path_data_L1(stress_pred_n_steps+1,7)/L1
+
+*get,path_data_all_beam_length,parm,path_data_all_beam,dim,x
+L1_s=L1/cos(beam_angle)**2
+L2_s=L1_s+h
+*do,x_index,1,path_data_all_beam_length
+	x=path_data_all_beam(x_index,4)
+	
+	*if,x,le,L1_s,then
+		path_data_all_beam(x_index,10)=x*cos(beam_angle)**2
+	*elseif,x,le,L2_s,then
+		path_data_all_beam(x_index,10)=(x-L1_s)+L1_s*cos(beam_angle)**2
+	*else
+		path_data_all_beam(x_index,10)=L2+(x-L2_s)*cos(beam_angle)**2
+	*endif
+*enddo
+
+!********** write data **********!
+
+*cfopen,cases,csv,,append
+*vwrite,case_num,E,dapplied,s_allowable,r,Tmax,Tmin,L1,h,%L1+L2%,K_target,Freaction,Stiffness,%(Stiffness-K_target)/K_target%,max_s1,%(max_s1-s_allowable)/s_allowable%,total_volume,L_min,S_intg
+%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G,%G
+*cfclos
+
+*cfopen,stress_case_%case_num%,csv
+*vwrite,'Path Length (in)','Beam Length (in)','S1 (psi)','SZ (psi)'
+%C,%C,%C,%C
+*vwrite,path_data_all_beam(1,4),path_data_all_beam(1,10),path_data_all_beam(1,5),path_data_all_beam(1,6)
+%G,%G,%G,%G
+*vwrite,'L (in)','Stress Prediction (psi)'
+%C,%C
+*vwrite,stress_pred(1,1),stress_pred(1,2)
+%G,%G
+*cfclos
+
+
+
+
+
+
+
+
+
+
+
