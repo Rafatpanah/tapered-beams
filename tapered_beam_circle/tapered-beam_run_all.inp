@@ -1,0 +1,73 @@
+
+/clear
+*cfopen,cases,csv
+
+*vwrite,'Case','E','d','s_allowable','r','Tmax','Tmin','L1','h','L','Stiffness Req','P','Stiffness','Stiffness Error','Smax','Smax Error','Volume','L min','S_intg'
+%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C
+*cfclos
+
+*cfopen,cases_nr_info,csv
+*vwrite,'Case','E','G','d','s_allowable','Stiffness','r','Tmax','Tmin','L1','h','L2','L','Converged','Itterations','dR','dL'
+%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C,%C
+*cfclos
+
+case_num=0
+dapplied=0.01
+Nbeams=50
+
+
+! create functions that have to be done outside of the do loop
+/input,create_functions,inp
+
+num_E_cases=2
+*del,E_cases,,nopr
+*dim,E_cases,array,num_E_cases
+E_cases(1)=15000000
+E_cases(2)=30000000
+
+num_S_cases=5
+*del,S_cases,,nopr
+*dim,S_cases,array,num_S_cases
+S_cases(1)=20000
+S_cases(2)=30000
+S_cases(3)=40000
+S_cases(4)=50000
+S_cases(5)=60000
+S_cases(5)=70000
+S_cases(5)=80000
+
+num_K_cases=7
+*del,K_cases,,nopr
+*dim,K_cases,array,num_K_cases
+K_cases(1)=10000
+K_cases(2)=50000
+K_cases(3)=100000
+K_cases(4)=200000
+K_cases(5)=300000
+K_cases(6)=500000
+K_cases(7)=1000000
+
+num_h_cases=1
+*del,h_cases,,nopr
+*dim,h_cases,array,num_h_cases
+h_cases(1)=0
+
+
+*do,E_case,1,num_E_cases
+	*do,S_case,1,num_S_cases
+		*do,K_case,1,num_K_cases
+			*do,h_case,1,num_h_cases
+				
+				case_num=case_num+1
+				E=E_cases(E_case)
+				K_target=K_cases(K_case)
+				s_allowable=S_cases(S_case)
+				h=h_cases(h_case)
+				
+				parsav,all,params,save
+				/input,tapered_beam,inp
+			*enddo
+		*enddo
+	*enddo
+*enddo
+
