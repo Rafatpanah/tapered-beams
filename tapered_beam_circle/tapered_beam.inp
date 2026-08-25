@@ -9,7 +9,7 @@ PI=acos(-1)
 /prep7
 angle=90
 nu=0.3
-G=(E/(2*(1+nu)))
+G=(2*(E/(2*(1+nu))))/(32/27)
 
 P=(K_target*dapplied)/Nbeams
 
